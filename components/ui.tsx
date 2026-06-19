@@ -26,8 +26,8 @@ export function Card({
   return (
     <section className={`card ${className}`}>
       {(title || right) && (
-        <header className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="card-title">
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="card-title min-w-0">
             {icon && <span aria-hidden>{icon}</span>}
             {title}
             {help && (
@@ -168,4 +168,62 @@ export function Stat({
 
 export function TagPill({ tag }: { tag: string }) {
   return <span className="chip text-accent2 border-accent2/30">#{tag}</span>;
+}
+
+/** Animated on/off switch. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-300 ${
+        checked ? "bg-accent" : "bg-edge"
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-300 ease-out ${
+          checked ? "translate-x-[22px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+/** A self-dismissing animated toast (slides up + fades). */
+export function Toast({
+  show,
+  onClose,
+  icon,
+  children,
+}: {
+  show: boolean;
+  onClose?: () => void;
+  icon?: string;
+  children: React.ReactNode;
+}) {
+  if (!show) return null;
+  return (
+    <div className="pointer-events-none fixed inset-x-3 bottom-24 z-50 flex justify-center">
+      <div className="pointer-events-auto flex max-w-md items-start gap-3 rounded-2xl border border-accent/40 bg-panel/95 px-4 py-3 shadow-2xl backdrop-blur animate-[toast-in_.35s_cubic-bezier(.18,.89,.32,1.28)]">
+        {icon && <span className="text-xl leading-none animate-[pop_.5s_ease]">{icon}</span>}
+        <div className="text-sm leading-snug text-white/90">{children}</div>
+        {onClose && (
+          <button onClick={onClose} className="ml-1 text-muted hover:text-white" aria-label="Dismiss">
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }

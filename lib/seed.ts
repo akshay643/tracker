@@ -128,6 +128,7 @@ export function defaultState(): AppState {
         createdAt: new Date().toISOString(),
       },
     ],
+    habits: [],
     archives: [],
     settings: {
       baseCurrency: "USD",

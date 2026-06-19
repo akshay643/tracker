@@ -33,6 +33,8 @@ import { TaxPackager } from "@/components/TaxPackager";
 import { DataTools } from "@/components/DataTools";
 import { Alerts } from "@/components/Alerts";
 import { MonthlyReports } from "@/components/MonthlyReports";
+import { HabitMenu } from "@/components/HabitMenu";
+import { HabitCards } from "@/components/HabitCards";
 import { NotificationRuntime } from "@/components/NotificationRuntime";
 import { IngestRuntime } from "@/components/IngestRuntime";
 import { MonthlyRollover } from "@/components/MonthlyRollover";
@@ -49,8 +51,9 @@ const TABS: { id: TabId; label: string; icon: string; blurb: string }[] = [
 ];
 
 // Sub-sections inside the Manage tab keep each screen focused.
-type ManageSection = "reminders" | "reports" | "ledger" | "automation";
+type ManageSection = "habits" | "reminders" | "reports" | "ledger" | "automation";
 const MANAGE_SECTIONS: { id: ManageSection; label: string }[] = [
+  { id: "habits", label: "Habits" },
   { id: "reminders", label: "Reminders" },
   { id: "reports", label: "Reports" },
   { id: "ledger", label: "Ledger" },
@@ -114,7 +117,7 @@ function TabIntro({ tab }: { tab: TabId }) {
 }
 
 function ManageBody() {
-  const [section, setSection] = useState<ManageSection>("reminders");
+  const [section, setSection] = useState<ManageSection>("habits");
   return (
     <div className="space-y-5">
       {/* Scrollable segmented sub-nav */}
@@ -134,6 +137,7 @@ function ManageBody() {
         ))}
       </div>
 
+      {section === "habits" && <HabitMenu />}
       {section === "reminders" && <Alerts />}
       {section === "reports" && (
         <div className="space-y-5">
@@ -163,6 +167,7 @@ function TabBody({ tab }: { tab: TabId }) {
     case "home":
       return (
         <div className="space-y-5">
+          <HabitCards />
           <SafeToSpend />
           <BurnRate />
           <CategoryChart />
@@ -286,7 +291,9 @@ export default function Page() {
         ) : (
           <div className="space-y-5">
             <TabIntro tab={tab} />
-            <TabBody tab={tab} />
+            <div key={tab} className="animate-rise space-y-5">
+              <TabBody tab={tab} />
+            </div>
             <footer className="pt-2 text-center text-[11px] text-muted">
               Offline-first · saved on this device, synced to <code>/api/expenses</code> when online.
             </footer>

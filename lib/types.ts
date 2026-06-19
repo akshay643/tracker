@@ -157,6 +157,24 @@ export interface Alert {
   createdAt: string;
 }
 
+// --- Habits / wellness (toggleable life modules) -----------------------------
+export type HabitType = "quit-smoking" | "hydrate" | "daily-log" | "no-spend";
+
+export interface Habit {
+  type: HabitType;
+  enabled: boolean;
+  /** Reminder cadence in minutes. */
+  intervalMinutes: number;
+  /** User's own motivational line; overrides the rotating defaults. */
+  customMessage?: string;
+  /** When the habit/streak began (ISO). */
+  startedAt: string;
+  // quit-smoking economics (optional):
+  cigarettesPerDay?: number;
+  pricePerPack?: number;
+  cigarettesPerPack?: number;
+}
+
 /** A closed (reset) month's transactions, kept so its report stays downloadable. */
 export interface MonthArchive {
   /** yyyy-mm of the month that was closed. */
@@ -175,6 +193,8 @@ export interface AppState {
   rules: AutomationRule[];
   impulses: ImpulseItem[];
   alerts: Alert[];
+  /** Toggleable wellness/life habits. */
+  habits: Habit[];
   /** Past months archived at reset time (newest first). */
   archives: MonthArchive[];
   settings: AppSettings;

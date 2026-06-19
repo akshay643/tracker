@@ -21,6 +21,7 @@ import type {
   Category,
   Client,
   Entry,
+  Habit,
   ImpulseItem,
   Ledger,
   Subscription,
@@ -50,6 +51,7 @@ type Action =
   | { type: "DELETE_IMPULSE"; id: string }
   | { type: "UPSERT_ALERT"; alert: Alert }
   | { type: "DELETE_ALERT"; id: string }
+  | { type: "UPSERT_HABIT"; habit: Habit }
   | { type: "PATCH_SETTINGS"; patch: Partial<AppSettings> }
   | { type: "RESET_DATA" }
   | { type: "CLOSE_MONTH"; month: string };
@@ -112,6 +114,12 @@ function reducer(state: AppState, action: Action): AppState {
       return touch({ alerts: upsert(state.alerts ?? [], action.alert) });
     case "DELETE_ALERT":
       return touch({ alerts: (state.alerts ?? []).filter((a) => a.id !== action.id) });
+    case "UPSERT_HABIT": {
+      const list = state.habits ?? [];
+      const i = list.findIndex((h) => h.type === action.habit.type);
+      const next = i === -1 ? [...list, action.habit] : list.map((h, idx) => (idx === i ? action.habit : h));
+      return touch({ habits: next });
+    }
     case "PATCH_SETTINGS":
       return touch({ settings: { ...state.settings, ...action.patch } });
     case "RESET_DATA":
@@ -171,6 +179,7 @@ interface StoreApi {
   deleteImpulse: (id: string) => void;
   upsertAlert: (a: Alert) => void;
   deleteAlert: (id: string) => void;
+  upsertHabit: (h: Habit) => void;
   patchSettings: (patch: Partial<AppSettings>) => void;
   /** Wipe all transactional data and start fresh (keeps categories). */
   resetData: () => void;
@@ -269,6 +278,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       deleteImpulse: (id) => dispatch({ type: "DELETE_IMPULSE", id }),
       upsertAlert: (alert) => dispatch({ type: "UPSERT_ALERT", alert }),
       deleteAlert: (id) => dispatch({ type: "DELETE_ALERT", id }),
+      upsertHabit: (habit) => dispatch({ type: "UPSERT_HABIT", habit }),
       patchSettings: (patch) => dispatch({ type: "PATCH_SETTINGS", patch }),
       resetData: () => dispatch({ type: "RESET_DATA" }),
       closeMonth: (month) => dispatch({ type: "CLOSE_MONTH", month }),

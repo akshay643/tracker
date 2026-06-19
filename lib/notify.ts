@@ -11,6 +11,7 @@
 import type { Alert, AppState } from "./types";
 import { daysUntil } from "./algorithms";
 import { VAPID_PUBLIC_KEY } from "./push-config";
+import { habitMeta, habitMessage } from "./habits";
 
 const FIRED_KEY = "fiscal.notify.fired.v1";
 
@@ -198,6 +199,18 @@ export function collectDue(state: AppState, now = new Date()): DueNotice[] {
     }
   }
 
+  // 3) Habit reminders — once per interval window while enabled.
+  for (const h of state.habits ?? []) {
+    if (!h.enabled) continue;
+    const interval = Math.max(1, h.intervalMinutes);
+    const bucket = Math.floor(now.getTime() / 60000 / interval);
+    const key = `habit:${h.type}:${bucket}`;
+    if (!fired[key]) {
+      const meta = habitMeta(h.type);
+      out.push({ key, title: `${meta.icon} ${meta.title}`, body: habitMessage(h, now) });
+    }
+  }
+
   return out;
 }
 
@@ -208,17 +221,17 @@ export function markFired(key: string, now = new Date()): void {
   saveFired(fired);
 }
 
-/** Fire all currently-due notices (no-op if permission isn't granted). */
-export async function flushDue(state: AppState, now = new Date()): Promise<number> {
-  if ((state.settings?.notify?.enabled ?? false) === false) return 0;
-  if (permission() !== "granted") return 0;
+/** Fire all currently-due notices; returns the ones sent (empty if not allowed). */
+export async function flushDue(state: AppState, now = new Date()): Promise<DueNotice[]> {
+  if ((state.settings?.notify?.enabled ?? false) === false) return [];
+  if (permission() !== "granted") return [];
   const due = collectDue(state, now);
-  let sent = 0;
+  const sent: DueNotice[] = [];
   for (const n of due) {
     const ok = await showNotification(n.title, n.body, n.key);
     if (ok) {
       markFired(n.key, now);
-      sent++;
+      sent.push(n);
     }
   }
   return sent;

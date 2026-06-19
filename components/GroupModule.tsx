@@ -128,7 +128,11 @@ export function GroupModule() {
       title="Group Splitting & Debt Matrix"
       icon="🤝"
       right={
-        <select value={ledgerId} onChange={(e) => setLedgerId(e.target.value)} className="input">
+        <select
+          value={ledgerId}
+          onChange={(e) => setLedgerId(e.target.value)}
+          className="input max-w-[55vw] truncate"
+        >
           {state.ledgers.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name}
@@ -190,21 +194,25 @@ export function GroupModule() {
               className="input w-28"
             />
           </div>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="label">Paid by</span>
-            <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)} className="input flex-1">
+            <select
+              value={paidBy}
+              onChange={(e) => setPaidBy(e.target.value)}
+              className="input min-w-[120px] flex-1"
+            >
               {ledger.members.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
               ))}
             </select>
-            <div className="flex overflow-hidden rounded-xl border border-edge">
+            <div className="flex flex-1 overflow-hidden rounded-xl border border-edge">
               {(["even", "percent", "exact"] as SplitMode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`px-2.5 py-2 text-xs capitalize ${
+                  className={`flex-1 px-2.5 py-2 text-xs capitalize ${
                     mode === m ? "bg-accent text-white" : "text-muted"
                   }`}
                 >

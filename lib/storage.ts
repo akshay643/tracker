@@ -23,6 +23,7 @@ function normalize(s: AppState): AppState {
   return {
     ...s,
     alerts: Array.isArray(s.alerts) ? s.alerts : [],
+    habits: Array.isArray(s.habits) ? s.habits : [],
     archives: Array.isArray(s.archives) ? s.archives : [],
     settings: {
       ...s.settings,

@@ -2,42 +2,55 @@
 // =============================================================================
 // NotificationRuntime — mounted once, always running while the app is open.
 // Registers the service worker and, on an interval (plus whenever the app
-// regains focus), fires any due subscription/alert reminders. This is the path
-// that works on an installed iOS PWA without a push backend.
+// regains focus), fires any due subscription/alert/habit reminders. Anything
+// that fires also pops an animated in-app toast.
 // =============================================================================
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { registerServiceWorker, flushDue, notificationsSupported, permission } from "@/lib/notify";
+import { Toast } from "./ui";
 
 export function NotificationRuntime() {
   const { state, ready } = useStore();
+  const [toast, setToast] = useState<{ icon: string; text: string } | null>(null);
 
-  // Register the SW once the app is interactive.
   useEffect(() => {
     if (notificationsSupported()) void registerServiceWorker();
   }, []);
 
-  // Poll for due reminders. Re-runs when state changes so new alerts are picked
-  // up immediately; the dedupe ledger prevents repeat fires.
   useEffect(() => {
     if (!ready) return;
     if (!notificationsSupported() || permission() !== "granted") return;
 
-    const check = () => void flushDue(state);
-    check(); // run now
-    const id = window.setInterval(check, 60_000);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") check();
+    let timer: number | undefined;
+    const check = async () => {
+      const sent = await flushDue(state);
+      if (sent.length) {
+        const last = sent[sent.length - 1];
+        // Title is "<emoji> <name>" — peel the emoji for the toast icon.
+        const [icon, ...rest] = last.title.split(" ");
+        setToast({ icon, text: `${rest.join(" ")} — ${last.body}` });
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => setToast(null), 6000);
+      }
     };
+    void check();
+    const id = window.setInterval(check, 60_000);
+    const onVisible = () => document.visibilityState === "visible" && check();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);
     return () => {
       window.clearInterval(id);
+      window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", check);
     };
   }, [state, ready]);
 
-  return null;
+  return (
+    <Toast show={!!toast} icon={toast?.icon} onClose={() => setToast(null)}>
+      {toast?.text}
+    </Toast>
+  );
 }

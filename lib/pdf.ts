@@ -3,7 +3,7 @@
 // Used by the monthly auto-reset and by the manual "download report" buttons.
 // =============================================================================
 
-import { jsPDF } from "jspdf";
+import type { jsPDF as JsPDF } from "jspdf";
 import type { Category, Entry } from "./types";
 import { formatMoney } from "./currency";
 
@@ -13,12 +13,13 @@ function monthTitle(key: string): string {
   return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
 }
 
-export function buildMonthlyPDF(
+function buildDoc(
+  jsPDF: typeof JsPDF,
   month: string,
   entries: Entry[],
   categories: Category[],
   base: string
-): jsPDF {
+): JsPDF {
   const catMap: Record<string, Category> = Object.fromEntries(categories.map((c) => [c.id, c]));
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
@@ -114,12 +115,14 @@ export function buildMonthlyPDF(
   return doc;
 }
 
-export function downloadMonthlyPDF(
+/** Lazy-loads jsPDF (keeps it out of the initial bundle) and triggers download. */
+export async function downloadMonthlyPDF(
   month: string,
   entries: Entry[],
   categories: Category[],
   base: string
-): void {
-  const doc = buildMonthlyPDF(month, entries, categories, base);
+): Promise<void> {
+  const { jsPDF } = await import("jspdf");
+  const doc = buildDoc(jsPDF, month, entries, categories, base);
   doc.save(`fiscal-report-${month}.pdf`);
 }
