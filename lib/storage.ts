@@ -15,19 +15,40 @@ function hasWindow(): boolean {
   return typeof window !== "undefined";
 }
 
+/** Upgrade a habit persisted under the old `intervalMinutes` schema. */
+function migrateHabit(h: any): any {
+  if (h && typeof h.everySeconds === "number" && h.scheduleMode) return h; // already new
+  const minutes = typeof h?.intervalMinutes === "number" ? h.intervalMinutes : 60;
+  const daily = minutes >= 1440;
+  return {
+    ...h,
+    id: h?.id ?? h?.type ?? "habit",
+    scheduleMode: daily ? "daily" : "interval",
+    everySeconds: Math.max(10, minutes * 60),
+    atTime: h?.atTime ?? "09:00",
+  };
+}
+
 /**
  * Backfill fields added in later versions so state persisted by an older build
  * never crashes the UI (forward-compatible migration on read).
  */
 function normalize(s: AppState): AppState {
+  const prevNotify = s.settings?.notify ?? ({} as any);
   return {
     ...s,
     alerts: Array.isArray(s.alerts) ? s.alerts : [],
-    habits: Array.isArray(s.habits) ? s.habits : [],
+    habits: (Array.isArray(s.habits) ? s.habits : []).map(migrateHabit),
     archives: Array.isArray(s.archives) ? s.archives : [],
     settings: {
       ...s.settings,
-      notify: s.settings?.notify ?? { enabled: false, subscriptionLeadDays: 3 },
+      notify: {
+        enabled: prevNotify.enabled ?? false,
+        subscriptionLeadDays: prevNotify.subscriptionLeadDays ?? 3,
+        quietEnabled: prevNotify.quietEnabled ?? true,
+        quietStart: prevNotify.quietStart ?? "22:00",
+        quietEnd: prevNotify.quietEnd ?? "08:00",
+      },
       // Default to ON, but anchor lastResetMonth to *now* so upgrading never
       // triggers a surprise wipe — it only fires at the next real month change.
       autoMonthlyReset: s.settings?.autoMonthlyReset ?? true,

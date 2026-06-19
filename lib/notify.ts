@@ -11,7 +11,7 @@
 import type { Alert, AppState } from "./types";
 import { daysUntil } from "./algorithms";
 import { VAPID_PUBLIC_KEY } from "./push-config";
-import { habitMeta, habitMessage } from "./habits";
+import { habitDisplay, habitMessage } from "./habits";
 
 const FIRED_KEY = "fiscal.notify.fired.v1";
 
@@ -132,6 +132,22 @@ function pastTimeToday(time: string, now: Date): boolean {
   return mins >= (h || 0) * 60 + (m || 0);
 }
 
+function toMins(t: string): number {
+  const [h, m] = (t || "0:0").split(":").map((n) => parseInt(n, 10));
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Is `now` inside the nightly quiet window (handles windows past midnight)? */
+export function inQuietHours(state: AppState, now: Date): boolean {
+  const n = state.settings?.notify;
+  if (!n?.quietEnabled) return false;
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const start = toMins(n.quietStart);
+  const end = toMins(n.quietEnd);
+  if (start === end) return false;
+  return start < end ? cur >= start && cur < end : cur >= start || cur < end;
+}
+
 /** Should this custom alert fire for the current local day? */
 function alertDueToday(a: Alert, now: Date): boolean {
   if (!a.enabled) return false;
@@ -199,15 +215,26 @@ export function collectDue(state: AppState, now = new Date()): DueNotice[] {
     }
   }
 
-  // 3) Habit reminders — once per interval window while enabled.
+  // 3) Habit reminders.
+  const quiet = inQuietHours(state, now);
   for (const h of state.habits ?? []) {
     if (!h.enabled) continue;
-    const interval = Math.max(1, h.intervalMinutes);
-    const bucket = Math.floor(now.getTime() / 60000 / interval);
-    const key = `habit:${h.type}:${bucket}`;
+    const disp = habitDisplay(h);
+    let key: string;
+    if (h.scheduleMode === "daily") {
+      // Once a day at the chosen time (respected even during quiet hours, since
+      // the user picked it explicitly).
+      if (!pastTimeToday(h.atTime, now)) continue;
+      key = `habit:${h.id}:daily:${day}`;
+    } else {
+      // Repeat every N seconds — suppressed during quiet hours.
+      if (quiet) continue;
+      const every = Math.max(10, h.everySeconds);
+      const bucket = Math.floor(now.getTime() / 1000 / every);
+      key = `habit:${h.id}:${bucket}`;
+    }
     if (!fired[key]) {
-      const meta = habitMeta(h.type);
-      out.push({ key, title: `${meta.icon} ${meta.title}`, body: habitMessage(h, now) });
+      out.push({ key, title: `${disp.icon} ${disp.title}`, body: habitMessage(h, now) });
     }
   }
 

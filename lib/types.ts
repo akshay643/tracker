@@ -157,18 +157,41 @@ export interface Alert {
   createdAt: string;
 }
 
-// --- Habits / wellness (toggleable life modules) -----------------------------
-export type HabitType = "quit-smoking" | "hydrate" | "daily-log" | "no-spend";
+// --- Habits / wellness (toggleable + custom life modules) ---------------------
+export type HabitType =
+  | "quit-smoking"
+  | "hydrate"
+  | "daily-log"
+  | "no-spend"
+  | "move"
+  | "wind-down"
+  | "custom";
+
+/** "interval" = repeat every N seconds; "daily" = once a day at a set time. */
+export type ScheduleMode = "interval" | "daily";
 
 export interface Habit {
+  /** Stable id. Built-ins use their type; custom habits get a uid. */
+  id: string;
   type: HabitType;
   enabled: boolean;
-  /** Reminder cadence in minutes. */
-  intervalMinutes: number;
+
+  // --- custom habit presentation (ignored for built-ins) ---
+  title?: string;
+  icon?: string;
+
+  // --- schedule ---
+  scheduleMode: ScheduleMode;
+  /** interval mode: seconds between reminders (min 10). */
+  everySeconds: number;
+  /** daily mode: local "HH:MM" to fire at. */
+  atTime: string;
+
   /** User's own motivational line; overrides the rotating defaults. */
   customMessage?: string;
   /** When the habit/streak began (ISO). */
   startedAt: string;
+
   // quit-smoking economics (optional):
   cigarettesPerDay?: number;
   pricePerPack?: number;
@@ -223,6 +246,11 @@ export interface NotifySettings {
   enabled: boolean;
   /** Remind about subscription renewals this many days ahead (0 disables). */
   subscriptionLeadDays: number;
+  /** Suppress repeating (interval) reminders during a nightly window. */
+  quietEnabled: boolean;
+  /** Local "HH:MM" quiet-hours window (may wrap past midnight). */
+  quietStart: string;
+  quietEnd: string;
 }
 
 // Added to AppSettings below via declaration; see autoMonthlyReset/lastResetMonth.

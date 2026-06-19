@@ -36,7 +36,13 @@ export function NotificationRuntime() {
       }
     };
     void check();
-    const id = window.setInterval(check, 60_000);
+    // Poll often enough to honor the shortest interval habit (down to 5s),
+    // but never tighter than needed.
+    const shortest = (state.habits ?? [])
+      .filter((h) => h.enabled && h.scheduleMode === "interval")
+      .reduce((min, h) => Math.min(min, h.everySeconds), 60);
+    const pollMs = Math.min(60_000, Math.max(5_000, shortest * 1000));
+    const id = window.setInterval(check, pollMs);
     const onVisible = () => document.visibilityState === "visible" && check();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);

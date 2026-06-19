@@ -1,27 +1,28 @@
 // =============================================================================
-// lib/habits.ts — wellness/life "modules" the user can toggle on. Each enabled
-// habit can fire motivational reminders at a chosen interval and (for some)
-// shows a live tracker card.
+// lib/habits.ts — wellness/life "modules" the user can toggle on, plus
+// fully-custom reminders the user creates. Each habit fires motivational
+// reminders on a schedule (every N seconds/min/hr, or once a day at a time) and
+// some show a live tracker on Home.
 //
 // Quit-smoking content is based on widely-published cessation timelines (CDC /
-// NHS "what happens when you quit" milestones) and craving guidance (urges
-// typically pass within 3–5 minutes). It's general motivation, not medical
-// advice.
+// NHS "what happens when you quit") and craving guidance (urges pass in ~3–5
+// min). General motivation, not medical advice.
 // =============================================================================
 
-import type { Habit, HabitType } from "./types";
+import type { Habit, HabitType, ScheduleMode } from "./types";
+import { uid } from "./seed";
 
 export interface HabitMeta {
   type: HabitType;
   title: string;
   icon: string;
   blurb: string;
-  defaultIntervalMinutes: number;
-  /** Accent color (hex) for the card. */
+  defaultEverySeconds: number;
+  defaultMode: ScheduleMode;
+  defaultAtTime?: string;
   color: string;
-  /** Rotating motivational lines shown in reminders. */
   motivations: string[];
-  /** Whether this habit shows the rich "since" timer + savings (quit-smoking). */
+  /** Rich quit tracker, day-streak, or simple check-in. */
   tracker: "quit" | "streak" | "checkin";
 }
 
@@ -30,20 +31,21 @@ export const HABIT_CATALOG: HabitMeta[] = [
     type: "quit-smoking",
     title: "Quit smoking",
     icon: "🚭",
-    blurb: "Track smoke-free time, money saved & health milestones, with hourly motivation.",
-    defaultIntervalMinutes: 60,
+    blurb: "Smoke-free timer, money saved & health milestones, with motivation.",
+    defaultEverySeconds: 3600,
+    defaultMode: "interval",
     color: "#22c55e",
     tracker: "quit",
     motivations: [
-      "Cravings peak and pass in 3–5 minutes. Drink water, breathe, and ride the wave. 🌊",
+      "Cravings peak and pass in 3–5 minutes. Drink water, breathe, ride the wave. 🌊",
       "Every cigarette you skip is a win your lungs feel immediately.",
       "20 minutes smoke-free already lowers your heart rate. Keep going.",
       "You're not giving something up — you're getting your health back.",
-      "Crave hits? Step outside, walk, and call it out loud: ‘this passes’.",
+      "Crave hits? Step outside, walk, say out loud: ‘this passes’.",
       "Money you didn't burn today is money toward something you love.",
       "Future-you is cheering right now. Don't break the streak.",
-      "Urges are like waves — they rise, crest, and fall. You can outlast this one.",
-      "Your sense of taste and smell are already recovering. 👃",
+      "Urges are waves — they rise, crest, and fall. Outlast this one.",
+      "Your taste and smell are already recovering. 👃",
       "One craving at a time. You've beaten every one so far.",
     ],
   },
@@ -52,14 +54,31 @@ export const HABIT_CATALOG: HabitMeta[] = [
     title: "Drink water",
     icon: "💧",
     blurb: "Gentle reminders to stay hydrated through the day.",
-    defaultIntervalMinutes: 120,
+    defaultEverySeconds: 7200,
+    defaultMode: "interval",
     color: "#22d3ee",
     tracker: "checkin",
     motivations: [
       "Time for a glass of water. 💧",
-      "Hydrate — your brain and focus will thank you.",
+      "Hydrate — your focus will thank you.",
       "A little water now beats an afternoon slump later.",
-      "Sip break! Even mild dehydration dents your mood and energy.",
+      "Sip break! Even mild dehydration dents mood and energy.",
+    ],
+  },
+  {
+    type: "move",
+    title: "Move & stretch",
+    icon: "🧘",
+    blurb: "Stand up, stretch, and unstick yourself from the chair.",
+    defaultEverySeconds: 3600,
+    defaultMode: "interval",
+    color: "#a855f7",
+    tracker: "checkin",
+    motivations: [
+      "Stand up and stretch for 30 seconds. 🧘",
+      "Roll your shoulders, look away from the screen, breathe.",
+      "A 2-minute walk resets your posture and your mind.",
+      "Your back will thank you — quick stretch time.",
     ],
   },
   {
@@ -67,12 +86,14 @@ export const HABIT_CATALOG: HabitMeta[] = [
     title: "Daily expense check-in",
     icon: "📝",
     blurb: "A nudge to log today's spends so your tracker stays accurate.",
-    defaultIntervalMinutes: 1440,
+    defaultEverySeconds: 86400,
+    defaultMode: "daily",
+    defaultAtTime: "21:00",
     color: "#6366f1",
     tracker: "checkin",
     motivations: [
       "Quick check-in: log today's spends while they're fresh. 📝",
-      "30 seconds now keeps your numbers honest. Add today's expenses.",
+      "30 seconds now keeps your numbers honest.",
       "What did you spend today? Capture it before it slips.",
     ],
   },
@@ -81,7 +102,9 @@ export const HABIT_CATALOG: HabitMeta[] = [
     title: "No-spend day",
     icon: "🛡️",
     blurb: "Build a streak of days with no non-essential spending.",
-    defaultIntervalMinutes: 1440,
+    defaultEverySeconds: 86400,
+    defaultMode: "daily",
+    defaultAtTime: "10:00",
     color: "#f59e0b",
     tracker: "streak",
     motivations: [
@@ -90,24 +113,81 @@ export const HABIT_CATALOG: HabitMeta[] = [
       "A no-spend day is a quiet flex. You've got this.",
     ],
   },
+  {
+    type: "wind-down",
+    title: "Wind down for sleep",
+    icon: "🌙",
+    blurb: "An evening cue to put screens away and rest well.",
+    defaultEverySeconds: 86400,
+    defaultMode: "daily",
+    defaultAtTime: "22:30",
+    color: "#818cf8",
+    tracker: "checkin",
+    motivations: [
+      "Time to wind down. Dim the lights and put the phone away. 🌙",
+      "Better sleep starts now — screens off, slow breaths.",
+      "Tomorrow-you wants you to rest. Start winding down.",
+    ],
+  },
 ];
 
-export function habitMeta(type: HabitType): HabitMeta {
-  return HABIT_CATALOG.find((h) => h.type === type) ?? HABIT_CATALOG[0];
+/** Catalog entries shown as toggles (everything except the custom builder). */
+export const BUILTIN_HABITS = HABIT_CATALOG;
+
+export function habitMeta(type: HabitType): HabitMeta | undefined {
+  return HABIT_CATALOG.find((h) => h.type === type);
+}
+
+/** Presentation for any habit, including user-created custom ones. */
+export function habitDisplay(h: Habit): {
+  title: string;
+  icon: string;
+  color: string;
+  tracker: "quit" | "streak" | "checkin";
+  motivations: string[];
+} {
+  const meta = habitMeta(h.type);
+  if (meta && h.type !== "custom") {
+    return { title: meta.title, icon: meta.icon, color: meta.color, tracker: meta.tracker, motivations: meta.motivations };
+  }
+  return {
+    title: h.title || "Reminder",
+    icon: h.icon || "⏰",
+    color: "#22d3ee",
+    tracker: "checkin",
+    motivations: [h.customMessage || "Here's your reminder. ⏰"],
+  };
 }
 
 export function defaultHabit(type: HabitType, now = new Date()): Habit {
   const meta = habitMeta(type);
   const base: Habit = {
+    id: type === "custom" ? uid("habit") : type,
     type,
     enabled: true,
-    intervalMinutes: meta.defaultIntervalMinutes,
+    scheduleMode: meta?.defaultMode ?? "interval",
+    everySeconds: meta?.defaultEverySeconds ?? 3600,
+    atTime: meta?.defaultAtTime ?? "09:00",
     startedAt: now.toISOString(),
   };
   if (type === "quit-smoking") {
     return { ...base, cigarettesPerDay: 10, pricePerPack: 350, cigarettesPerPack: 20 };
   }
   return base;
+}
+
+export function newCustomHabit(now = new Date()): Habit {
+  return {
+    id: uid("habit"),
+    type: "custom",
+    enabled: true,
+    title: "",
+    icon: "⏰",
+    scheduleMode: "interval",
+    everySeconds: 3600,
+    atTime: "09:00",
+    startedAt: now.toISOString(),
+  };
 }
 
 // --- Quit-smoking computations -----------------------------------------------
@@ -117,18 +197,17 @@ export interface QuitMilestone {
   label: string;
 }
 
-/** Health recovery timeline (hours since last cigarette). */
 export const QUIT_MILESTONES: QuitMilestone[] = [
   { atHours: 0, label: "You started. The hardest step is behind you." },
   { atHours: 0.33, label: "20 min: heart rate & blood pressure drop." },
   { atHours: 12, label: "12 hrs: blood carbon-monoxide returns to normal." },
-  { atHours: 24, label: "1 day: heart-attack risk already begins to fall." },
+  { atHours: 24, label: "1 day: heart-attack risk begins to fall." },
   { atHours: 48, label: "2 days: nerve endings regrow — taste & smell sharpen." },
   { atHours: 72, label: "3 days: breathing eases as bronchial tubes relax." },
   { atHours: 336, label: "2 weeks: circulation & lung function improve." },
   { atHours: 2160, label: "3 months: lung function up to ~30% better." },
-  { atHours: 6480, label: "9 months: coughing & shortness of breath decline." },
-  { atHours: 8760, label: "1 year: heart-disease risk is about half a smoker's." },
+  { atHours: 6480, label: "9 months: coughing & breathlessness decline." },
+  { atHours: 8760, label: "1 year: heart-disease risk about half a smoker's." },
 ];
 
 export interface QuitStats {
@@ -140,7 +219,7 @@ export interface QuitStats {
   moneySaved: number;
   current: QuitMilestone;
   next?: QuitMilestone;
-  progressToNext: number; // 0..1
+  progressToNext: number;
 }
 
 export function quitStats(habit: Habit, now = new Date()): QuitStats {
@@ -171,17 +250,32 @@ export function quitStats(habit: Habit, now = new Date()): QuitStats {
   return { ms, days, hours, minutes, cigarettesAvoided, moneySaved, current, next, progressToNext };
 }
 
-/** Whole-day streak count for streak/check-in habits. */
 export function streakDays(habit: Habit, now = new Date()): number {
   const start = new Date(habit.startedAt).getTime();
   return Math.max(0, Math.floor((now.getTime() - start) / 86_400_000));
 }
 
-/** Pick the reminder text: custom message wins, else rotate through defaults. */
+/** Reminder text: custom message wins, else rotate the built-in motivations. */
 export function habitMessage(habit: Habit, now = new Date()): string {
   if (habit.customMessage && habit.customMessage.trim()) return habit.customMessage.trim();
-  const meta = habitMeta(habit.type);
-  const interval = Math.max(1, habit.intervalMinutes);
-  const bucket = Math.floor(now.getTime() / 60000 / interval);
-  return meta.motivations[bucket % meta.motivations.length];
+  const opts = habitDisplay(habit).motivations;
+  const step = habit.scheduleMode === "interval" ? Math.max(10, habit.everySeconds) : 86400;
+  const bucket = Math.floor(now.getTime() / 1000 / step);
+  return opts[bucket % opts.length];
+}
+
+/** Human label for a habit's schedule, e.g. "every 90 sec" or "daily at 21:00". */
+export function scheduleLabel(habit: Habit): string {
+  if (habit.scheduleMode === "daily") return `daily at ${habit.atTime}`;
+  return `every ${formatEvery(habit.everySeconds)}`;
+}
+
+export function formatEvery(seconds: number): string {
+  if (seconds < 60) return `${seconds} sec`;
+  if (seconds < 3600) {
+    const m = seconds / 60;
+    return `${Number.isInteger(m) ? m : m.toFixed(1)} min`;
+  }
+  const h = seconds / 3600;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} hr`;
 }
