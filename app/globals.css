@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: radial-gradient(1200px 600px at 80% -10%, rgba(99, 102, 241, 0.18), transparent),
+    radial-gradient(900px 500px at -10% 10%, rgba(34, 211, 238, 0.12), transparent), #0b1020;
+  background-attachment: fixed;
+  color: #e7ebf6;
+  min-height: 100vh;
+  /* Never let a wide table or chart push the whole page sideways on mobile. */
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(12%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Thin custom scrollbars for data-dense panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #243056 transparent;
+}
+*::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #243056;
+  border-radius: 999px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-edge bg-panel/70 backdrop-blur p-4 shadow-lg shadow-black/20;
+  }
+  .card-title {
+    @apply text-sm font-semibold tracking-wide text-white/90 flex items-center gap-2;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-edge bg-panel2 px-2.5 py-1 text-xs text-muted;
+  }
+  .btn {
+    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm font-medium text-white/90 transition hover:border-accent hover:text-white active:scale-95 disabled:opacity-40;
+  }
+  .btn-accent {
+    @apply border-transparent bg-accent text-white hover:bg-indigo-500;
+  }
+  /* text-base on mobile avoids iOS auto-zoom on focus; tightens to sm on desktop. */
+  .input {
+    @apply min-h-[40px] rounded-xl border border-edge bg-ink/60 px-3 py-2 text-base text-white placeholder:text-muted/70 outline-none focus:border-accent sm:text-sm;
+  }
+  .label {
+    @apply text-[11px] uppercase tracking-wider text-muted;
+  }
+}
