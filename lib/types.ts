@@ -157,6 +157,14 @@ export interface Alert {
   createdAt: string;
 }
 
+/** A closed (reset) month's transactions, kept so its report stays downloadable. */
+export interface MonthArchive {
+  /** yyyy-mm of the month that was closed. */
+  month: string;
+  entries: Entry[];
+  closedAt: string;
+}
+
 /** Root persisted document — one object that round-trips to localStorage or /api/expenses. */
 export interface AppState {
   entries: Entry[];
@@ -167,6 +175,8 @@ export interface AppState {
   rules: AutomationRule[];
   impulses: ImpulseItem[];
   alerts: Alert[];
+  /** Past months archived at reset time (newest first). */
+  archives: MonthArchive[];
   settings: AppSettings;
   /** Monotonic clock for last-write-wins sync conflict resolution. */
   rev: number;
@@ -182,6 +192,10 @@ export interface AppSettings {
   canvas: "macro" | "micro";
   /** Notification preferences. */
   notify: NotifySettings;
+  /** Auto-archive + clear transactions at the start of each month. */
+  autoMonthlyReset: boolean;
+  /** yyyy-mm of the last month we reset for (prevents repeat resets). */
+  lastResetMonth: string;
 }
 
 export interface NotifySettings {
@@ -190,3 +204,5 @@ export interface NotifySettings {
   /** Remind about subscription renewals this many days ahead (0 disables). */
   subscriptionLeadDays: number;
 }
+
+// Added to AppSettings below via declaration; see autoMonthlyReset/lastResetMonth.

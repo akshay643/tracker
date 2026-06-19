@@ -23,9 +23,14 @@ function normalize(s: AppState): AppState {
   return {
     ...s,
     alerts: Array.isArray(s.alerts) ? s.alerts : [],
+    archives: Array.isArray(s.archives) ? s.archives : [],
     settings: {
       ...s.settings,
       notify: s.settings?.notify ?? { enabled: false, subscriptionLeadDays: 3 },
+      // Default to ON, but anchor lastResetMonth to *now* so upgrading never
+      // triggers a surprise wipe — it only fires at the next real month change.
+      autoMonthlyReset: s.settings?.autoMonthlyReset ?? true,
+      lastResetMonth: s.settings?.lastResetMonth ?? new Date().toISOString().slice(0, 7),
     },
   };
 }

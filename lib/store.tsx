@@ -51,7 +51,13 @@ type Action =
   | { type: "UPSERT_ALERT"; alert: Alert }
   | { type: "DELETE_ALERT"; id: string }
   | { type: "PATCH_SETTINGS"; patch: Partial<AppSettings> }
-  | { type: "RESET_DATA" };
+  | { type: "RESET_DATA" }
+  | { type: "CLOSE_MONTH"; month: string };
+
+/** Local-time yyyy-mm for the current month (used for monthly rollover). */
+export function currentMonth(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   const i = list.findIndex((x) => x.id === item.id);
@@ -119,8 +125,25 @@ function reducer(state: AppState, action: Action): AppState {
         rules: [],
         impulses: [],
         alerts: [],
+        archives: [],
         settings: { ...state.settings, liquidReserves: 0, monthlyIncomeTarget: 0 },
       });
+    case "CLOSE_MONTH": {
+      // Archive current transactions under `month`, then clear them. Config
+      // (categories, subscriptions, clients, rules, alerts) is intentionally
+      // kept — only the monthly transaction ledger resets.
+      const archive = {
+        month: action.month,
+        entries: state.entries,
+        closedAt: new Date().toISOString(),
+      };
+      return touch({
+        entries: [],
+        impulses: [],
+        archives: [archive, ...(state.archives ?? [])].slice(0, 36),
+        settings: { ...state.settings, lastResetMonth: currentMonth() },
+      });
+    }
     default:
       return state;
   }
@@ -151,6 +174,8 @@ interface StoreApi {
   patchSettings: (patch: Partial<AppSettings>) => void;
   /** Wipe all transactional data and start fresh (keeps categories). */
   resetData: () => void;
+  /** Archive the current transactions under `month` (yyyy-mm) and clear them. */
+  closeMonth: (month: string) => void;
 }
 
 export interface NewEntryInput {
@@ -246,6 +271,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       deleteAlert: (id) => dispatch({ type: "DELETE_ALERT", id }),
       patchSettings: (patch) => dispatch({ type: "PATCH_SETTINGS", patch }),
       resetData: () => dispatch({ type: "RESET_DATA" }),
+      closeMonth: (month) => dispatch({ type: "CLOSE_MONTH", month }),
     };
   }, [state, ready, source]);
 
