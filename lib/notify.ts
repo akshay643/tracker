@@ -10,6 +10,7 @@
 
 import type { Alert, AppState } from "./types";
 import { daysUntil } from "./algorithms";
+import { VAPID_PUBLIC_KEY } from "./push-config";
 
 const FIRED_KEY = "fiscal.notify.fired.v1";
 
@@ -232,19 +233,47 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 /**
- * Subscribe this device to Web Push. Returns the PushSubscription to POST to
- * your server (which then sends pushes via web-push + the VAPID private key).
- * Left unwired by default because the demo backend doesn't send pushes.
+ * Subscribe this device to Web Push (reusing an existing subscription if one
+ * exists). Returns the PushSubscription — the server uses it to deliver pushes
+ * via APNs even when the app is closed.
  */
-export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubscription | null> {
+export async function subscribeToPush(): Promise<PushSubscription | null> {
   const reg = swReg ?? (await registerServiceWorker());
   if (!reg || permission() !== "granted") return null;
   try {
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) return existing;
     return await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Ask the server to send a real push to this device. With `delaySeconds`, the
+ * server holds the request then sends — so it arrives after you've closed the
+ * app or locked the phone. Returns true if the server accepted the request.
+ */
+export async function sendServerPush(opts: {
+  title: string;
+  body: string;
+  tag?: string;
+  delaySeconds?: number;
+}): Promise<boolean> {
+  const sub = await subscribeToPush();
+  if (!sub) return false;
+  try {
+    const res = await fetch("/api/push/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subscription: sub, ...opts }),
+      keepalive: true, // let the request survive the page being backgrounded
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }

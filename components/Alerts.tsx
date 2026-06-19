@@ -17,6 +17,8 @@ import {
   requestPermission,
   registerServiceWorker,
   showNotification,
+  subscribeToPush,
+  sendServerPush,
   isIOS,
   isStandalonePWA,
 } from "@/lib/notify";
@@ -54,16 +56,33 @@ export function Alerts() {
     setPerm(p);
     if (p === "granted") {
       await registerServiceWorker();
+      // Register for real (server-sent) push so reminders arrive when closed.
+      const sub = await subscribeToPush();
       patchSettings({ notify: { ...notify, enabled: true } });
-      setMsg("Notifications are on. You'll be reminded while the app is open.");
+      setMsg(
+        sub
+          ? "Notifications are on. Reminders can now arrive even when the app is closed."
+          : "Notifications on, but this device couldn't register for background push. They'll still show while the app is open."
+      );
     } else {
       setMsg("Permission was not granted. You can enable it later in your browser settings.");
     }
   }
 
   async function test() {
-    const ok = await showNotification("✅ Fiscal test", "Notifications are working on this device.", "test");
-    setMsg(ok ? "Sent a test notification." : "Couldn't send — enable notifications first.");
+    // Use the server path so this proves real (closed-app capable) delivery.
+    const ok = await sendServerPush({
+      title: "✅ Fiscal test",
+      body: "Push is working on this device.",
+      tag: "test",
+    });
+    if (ok) {
+      setMsg("Sent a real push from the server. (If it doesn't show, check Settings → Notifications → Fiscal.)");
+    } else {
+      // Fall back to a local notification (only visible while app is open).
+      const local = await showNotification("✅ Fiscal test", "Local test (app must stay open).", "test");
+      setMsg(local ? "Sent a local test notification." : "Couldn't send — enable notifications first.");
+    }
   }
 
   // --- countdown test timer ---
@@ -94,22 +113,40 @@ export function Alerts() {
       }
       await registerServiceWorker();
     }
-    const total = Math.min(3600, Math.max(1, Math.floor(seconds) || 1));
+    // Server can hold the request at most ~55s before its function times out.
+    const total = Math.min(55, Math.max(1, Math.floor(seconds) || 1));
+
+    // Fire the request to the server NOW. It waits `total` seconds, then pushes
+    // — so it arrives even after you close the app or lock the phone.
+    const accepted = await sendServerPush({
+      title: "⏱️ Timer reminder",
+      body: `This fired ${total} second${total === 1 ? "" : "s"} after you started the timer.`,
+      tag: "timer-test",
+      delaySeconds: total,
+    });
+
     const startedAt = Date.now();
     setRemaining(total);
-    setMsg(`Timer started — notification in ${total}s. You can lock your phone now.`);
+    setMsg(
+      accepted
+        ? `Push scheduled on the server — you can close the app or lock the phone now. Arrives in ${total}s.`
+        : `Couldn't reach the push server; this will fire locally only (keep the app open).`
+    );
     clearTimer();
     timerRef.current = window.setInterval(async () => {
       const left = total - Math.floor((Date.now() - startedAt) / 1000);
       if (left <= 0) {
         clearTimer();
         setRemaining(null);
-        await showNotification(
-          "⏱️ Timer reminder",
-          `This fired ${total} second${total === 1 ? "" : "s"} after you started the timer.`,
-          "timer-test"
-        );
-        setMsg("⏱️ Timer notification fired!");
+        // Local fallback only if the server didn't accept the push.
+        if (!accepted) {
+          await showNotification(
+            "⏱️ Timer reminder",
+            `This fired ${total} second${total === 1 ? "" : "s"} after you started the timer.`,
+            "timer-test"
+          );
+        }
+        setMsg(accepted ? "⏱️ Timer push should have arrived." : "⏱️ Timer notification fired locally.");
       } else {
         setRemaining(left);
       }
@@ -190,8 +227,9 @@ export function Alerts() {
         )}
         {msg && <p className="mt-2 text-xs text-muted">{msg}</p>}
         <p className="mt-2 text-[11px] text-muted">
-          Reminders fire while the app is open or in the background of an installed PWA. For
-          always-on delivery, wire the included <code>push</code> handler to a server.
+          Uses real server-sent Web Push, so the timer test and instant test arrive even when the
+          app is closed or the phone is locked. Time-of-day reminders (renewals, custom alerts)
+          still need a server cron to fire while closed — see notes.
         </p>
       </div>
 
@@ -199,8 +237,8 @@ export function Alerts() {
       <div className="mt-3 rounded-xl border border-edge bg-panel2/30 p-3">
         <div className="text-sm font-medium">⏱️ Test with a timer</div>
         <div className="text-xs text-muted">
-          Fire a notification after a delay so you can verify it works — start it, then lock your
-          phone or switch apps.
+          Schedules a real push on the server, then sends it after the delay — start it, then{" "}
+          <b>close the app or lock your phone</b> and it should still arrive. (Max 55s.)
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted">After</span>
