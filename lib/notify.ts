@@ -126,6 +126,12 @@ export function markFired(key: string, now = new Date()): void {
   saveFired(fired);
 }
 
+/** Merge the server's fired ledger into ours (so closed-app sends aren't repeated on reopen). */
+function mergeFired(serverFired: Record<string, string>): void {
+  if (!serverFired) return;
+  saveFired({ ...serverFired, ...loadFired() });
+}
+
 export function serverPushActive(): boolean {
   try {
     return localStorage.getItem(SERVER_KEY) === "1";
@@ -135,24 +141,23 @@ export function serverPushActive(): boolean {
 }
 
 /**
- * Process due reminders for the app-open case and return them (for the in-app
- * toast). When this device is registered for server push, the cron delivers the
- * OS notification, so we only mark-fired + toast here to avoid duplicates.
+ * Fire any due reminders while the app is open. Always shows the real OS
+ * notification (immediate + reliable) and returns the items for the in-app
+ * toast. If this device is also registered for server push, we sync our
+ * fired-ledger up so the cron won't re-send the same occurrence.
  */
 export async function flushDue(state: AppState, now = new Date()): Promise<DueNotice[]> {
   if ((state.settings?.notify?.enabled ?? false) === false) return [];
   if (permission() !== "granted") return [];
   const due = collectDue(state, now);
-  const useServer = serverPushActive();
   const handled: DueNotice[] = [];
   for (const n of due) {
-    if (!useServer) {
-      const ok = await showNotification(n.title, n.body, n.key);
-      if (!ok) continue;
-    }
-    markFired(n.key, now); // local ledger dedupes the toast
+    const ok = await showNotification(n.title, n.body, n.key);
+    if (!ok) continue;
+    markFired(n.key, now);
     handled.push(n);
   }
+  if (handled.length && serverPushActive()) void registerForServerPush(state);
   return handled;
 }
 
@@ -190,9 +195,12 @@ export async function registerForServerPush(state: AppState): Promise<boolean> {
         subscription: sub,
         schedule: toSchedule(state),
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        fired: loadFired(), // share what we've already shown so the cron won't repeat it
       }),
     });
-    const ok = res.ok && (await res.json().catch(() => ({})))?.stored === true;
+    const data = await res.json().catch(() => ({} as any));
+    const ok = res.ok && data?.stored === true;
+    if (ok && data.fired) mergeFired(data.fired); // learn what the cron sent while closed
     try {
       localStorage.setItem(SERVER_KEY, ok ? "1" : "0");
     } catch {

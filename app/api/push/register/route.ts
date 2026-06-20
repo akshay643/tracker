@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ stored: false, error: "bad-json" }, { status: 400 });
   }
-  const { subscription, schedule, tz } = body ?? {};
+  const { subscription, schedule, tz, fired } = body ?? {};
   if (!subscription?.endpoint) {
     return NextResponse.json({ stored: false, error: "missing-subscription" }, { status: 400 });
   }
@@ -32,13 +32,23 @@ export async function POST(req: Request) {
 
   const id = endpointId(subscription.endpoint);
   const existing = await getRegistration(id);
+
+  // Union the client's and server's fired ledgers so neither side repeats an
+  // occurrence the other already delivered. Cap to keep it bounded.
+  const mergedFired: Record<string, string> = {
+    ...(existing?.fired ?? {}),
+    ...(fired && typeof fired === "object" ? fired : {}),
+  };
+  const entries = Object.entries(mergedFired);
+  const cappedFired = entries.length > 300 ? Object.fromEntries(entries.slice(-300)) : mergedFired;
+
   await saveRegistration({
     id,
     subscription,
-    schedule,
-    tz: typeof tz === "string" ? tz : "UTC",
-    fired: existing?.fired ?? {},
+    schedule: schedule ?? existing?.schedule,
+    tz: typeof tz === "string" ? tz : existing?.tz ?? "UTC",
+    fired: cappedFired,
     updatedAt: new Date().toISOString(),
   });
-  return NextResponse.json({ stored: true, id });
+  return NextResponse.json({ stored: true, id, fired: cappedFired });
 }
