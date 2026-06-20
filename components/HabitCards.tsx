@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { formatMoney } from "@/lib/currency";
-import { habitMeta, quitStats, streakDays, habitMessage } from "@/lib/habits";
+import { habitMeta, habitDisplay, quitStats, streakDays, habitMessage, scheduleLabel } from "@/lib/habits";
 import type { Habit } from "@/lib/types";
 import { Card } from "./ui";
 
@@ -27,7 +27,7 @@ function QuitSmokingCard({ habit }: { habit: Habit }) {
   const { state, upsertHabit } = useStore();
   const now = useNow(1000);
   const s = quitStats(habit, now);
-  const meta = habitMeta("quit-smoking");
+  const meta = habitMeta("quit-smoking")!;
   const base = state.settings.baseCurrency;
 
   return (
@@ -94,25 +94,23 @@ function QuitSmokingCard({ habit }: { habit: Habit }) {
 function SimpleHabitCard({ habit }: { habit: Habit }) {
   const { upsertHabit } = useStore();
   const now = useNow(30_000);
-  const meta = habitMeta(habit.type);
+  const disp = habitDisplay(habit);
   const streak = streakDays(habit, now);
-  const isStreak = meta.tracker === "streak";
+  const isStreak = disp.tracker === "streak";
 
   return (
-    <Card title={meta.title} icon={meta.icon} info={meta.blurb}>
+    <Card title={disp.title} icon={disp.icon} info={habitMeta(habit.type)?.blurb}>
       <div className="flex items-center gap-4">
         <div
           className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl"
-          style={{ background: meta.color + "22" }}
+          style={{ background: disp.color + "22" }}
         >
           <span className="text-xl font-bold leading-none tabular-nums">{streak}</span>
           <span className="text-[9px] uppercase tracking-wide text-muted">days</span>
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm text-white/90">{habitMessage(habit, now)}</p>
-          <p className="mt-0.5 text-[11px] text-muted">
-            Reminder every {habit.intervalMinutes >= 1440 ? "day" : `${habit.intervalMinutes} min`}.
-          </p>
+          <p className="mt-0.5 text-[11px] text-muted">Reminder {scheduleLabel(habit)}.</p>
         </div>
       </div>
       {isStreak && (
