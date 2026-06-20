@@ -19,6 +19,8 @@ import {
   showNotification,
   subscribeToPush,
   sendServerPush,
+  registerForServerPush,
+  serverPushActive,
   isIOS,
   isStandalonePWA,
 } from "@/lib/notify";
@@ -39,10 +41,12 @@ export function Alerts() {
   const [perm, setPerm] = useState<NotificationPermission>("default");
   const [supported, setSupported] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+  const [bg, setBg] = useState(false);
 
   useEffect(() => {
     setSupported(notificationsSupported());
     setPerm(getPermission());
+    setBg(serverPushActive());
   }, []);
 
   const iosNeedsInstall = isIOS() && !isStandalonePWA();
@@ -56,13 +60,15 @@ export function Alerts() {
     setPerm(p);
     if (p === "granted") {
       await registerServiceWorker();
-      // Register for real (server-sent) push so reminders arrive when closed.
-      const sub = await subscribeToPush();
+      await subscribeToPush();
       patchSettings({ notify: { ...notify, enabled: true } });
+      // Register schedule with the server for closed-app delivery.
+      const registered = await registerForServerPush({ ...state, settings: { ...state.settings, notify: { ...notify, enabled: true } } });
+      setBg(registered);
       setMsg(
-        sub
-          ? "Notifications are on. Reminders can now arrive even when the app is closed."
-          : "Notifications on, but this device couldn't register for background push. They'll still show while the app is open."
+        registered
+          ? "Notifications on. Reminders will arrive even when the app is closed. 📡"
+          : "Notifications on. They'll show while the app is open (background delivery isn't set up on the server yet)."
       );
     } else {
       setMsg("Permission was not granted. You can enable it later in your browser settings.");
@@ -225,11 +231,20 @@ export function Alerts() {
             Screen</b>, then open Fiscal from the home screen.
           </p>
         )}
+        {on && (
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className="text-muted">Background delivery:</span>
+            {bg ? (
+              <span className="text-good">📡 Active — reminders fire even when closed</span>
+            ) : (
+              <span className="text-warn">app-open only (server store not set up)</span>
+            )}
+          </div>
+        )}
         {msg && <p className="mt-2 text-xs text-muted">{msg}</p>}
         <p className="mt-2 text-[11px] text-muted">
-          Uses real server-sent Web Push, so the timer test and instant test arrive even when the
-          app is closed or the phone is locked. Time-of-day reminders (renewals, custom alerts)
-          still need a server cron to fire while closed — see notes.
+          With background delivery on, all reminders — subscription renewals, custom alerts and
+          habits — are sent by the server, so they arrive even when the app is closed.
         </p>
       </div>
 

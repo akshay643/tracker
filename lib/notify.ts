@@ -8,12 +8,15 @@
 // in later via VAPID — see subscribeToPush() below.
 // =============================================================================
 
-import type { Alert, AppState } from "./types";
-import { daysUntil } from "./algorithms";
+import type { AppState } from "./types";
 import { VAPID_PUBLIC_KEY } from "./push-config";
-import { habitDisplay, habitMessage } from "./habits";
+import { computeDue, type DueNotice, type Schedule } from "./due";
+
+export type { DueNotice };
 
 const FIRED_KEY = "fiscal.notify.fired.v1";
+/** Set once this device is registered for server-sent (closed-app) push. */
+const SERVER_KEY = "fiscal.notify.server.v1";
 
 export function notificationsSupported(): boolean {
   return (
@@ -109,136 +112,11 @@ function saveFired(map: Record<string, string>): void {
   }
 }
 
-// --- Due-detection ------------------------------------------------------------
+// --- Due-detection (delegates to the shared pure scheduler) ------------------
 
-export interface DueNotice {
-  /** Stable key for the specific occurrence (prevents duplicate fires). */
-  key: string;
-  title: string;
-  body: string;
-}
-
-/** yyyy-mm-dd for `now`, in local time (not UTC) so day boundaries feel right. */
-function localDay(now: Date): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-    now.getDate()
-  ).padStart(2, "0")}`;
-}
-
-/** Has the wall-clock passed this alert's "HH:MM" today? */
-function pastTimeToday(time: string, now: Date): boolean {
-  const [h, m] = (time || "09:00").split(":").map((n) => parseInt(n, 10));
-  const mins = now.getHours() * 60 + now.getMinutes();
-  return mins >= (h || 0) * 60 + (m || 0);
-}
-
-function toMins(t: string): number {
-  const [h, m] = (t || "0:0").split(":").map((n) => parseInt(n, 10));
-  return (h || 0) * 60 + (m || 0);
-}
-
-/** Is `now` inside the nightly quiet window (handles windows past midnight)? */
-export function inQuietHours(state: AppState, now: Date): boolean {
-  const n = state.settings?.notify;
-  if (!n?.quietEnabled) return false;
-  const cur = now.getHours() * 60 + now.getMinutes();
-  const start = toMins(n.quietStart);
-  const end = toMins(n.quietEnd);
-  if (start === end) return false;
-  return start < end ? cur >= start && cur < end : cur >= start || cur < end;
-}
-
-/** Should this custom alert fire for the current local day? */
-function alertDueToday(a: Alert, now: Date): boolean {
-  if (!a.enabled) return false;
-  if (!pastTimeToday(a.time, now)) return false;
-  const today = localDay(now);
-  const anchor = new Date(a.date + "T00:00:00");
-  switch (a.recurrence) {
-    case "none":
-      // One-shot: due once the anchor day arrives (and we haven't fired it).
-      return today >= a.date;
-    case "daily":
-      return today >= a.date;
-    case "weekly":
-      return now.getDay() === anchor.getDay() && today >= a.date;
-    case "monthly": {
-      // Same day-of-month as the anchor (clamped to short months).
-      const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      const target = Math.min(anchor.getDate(), dim);
-      return now.getDate() === target && today >= a.date;
-    }
-    default:
-      return false;
-  }
-}
-
-/**
- * Compute everything that should notify right now and hasn't already fired for
- * this occurrence. Pure aside from reading the dedupe ledger.
- */
+/** Reading the local dedupe ledger, what should notify right now? */
 export function collectDue(state: AppState, now = new Date()): DueNotice[] {
-  const out: DueNotice[] = [];
-  const fired = loadFired();
-  const notify = state.settings?.notify ?? { enabled: true, subscriptionLeadDays: 3 };
-  const day = localDay(now);
-
-  // 1) Subscription renewals within the lead window (once per renewal date).
-  const lead = notify.subscriptionLeadDays ?? 0;
-  if (lead > 0) {
-    for (const s of state.subscriptions) {
-      if (!s.active) continue;
-      const d = daysUntil(s.nextRenewal, now);
-      if (d <= lead && d >= 0) {
-        const key = `sub:${s.id}:${s.nextRenewal}`;
-        if (!fired[key]) {
-          const when = d === 0 ? "today" : `in ${d} day${d === 1 ? "" : "s"}`;
-          out.push({
-            key,
-            title: `🔔 ${s.name} renews ${when}`,
-            body: `${s.currency} ${s.amount} · ${s.cadence}. Renews ${s.nextRenewal}.`,
-          });
-        }
-      }
-    }
-  }
-
-  // 2) Custom alerts.
-  for (const a of state.alerts ?? []) {
-    if (alertDueToday(a, now)) {
-      // For recurring alerts the occurrence key includes the day; one-shots use
-      // a fixed key so they never repeat.
-      const key = a.recurrence === "none" ? `alert:${a.id}` : `alert:${a.id}:${day}`;
-      if (!fired[key]) {
-        out.push({ key, title: `⏰ ${a.label}`, body: "Reminder from Fiscal." });
-      }
-    }
-  }
-
-  // 3) Habit reminders.
-  const quiet = inQuietHours(state, now);
-  for (const h of state.habits ?? []) {
-    if (!h.enabled) continue;
-    const disp = habitDisplay(h);
-    let key: string;
-    if (h.scheduleMode === "daily") {
-      // Once a day at the chosen time (respected even during quiet hours, since
-      // the user picked it explicitly).
-      if (!pastTimeToday(h.atTime, now)) continue;
-      key = `habit:${h.id}:daily:${day}`;
-    } else {
-      // Repeat every N seconds — suppressed during quiet hours.
-      if (quiet) continue;
-      const every = Math.max(10, h.everySeconds);
-      const bucket = Math.floor(now.getTime() / 1000 / every);
-      key = `habit:${h.id}:${bucket}`;
-    }
-    if (!fired[key]) {
-      out.push({ key, title: `${disp.icon} ${disp.title}`, body: habitMessage(h, now) });
-    }
-  }
-
-  return out;
+  return computeDue(state, now, loadFired());
 }
 
 /** Mark an occurrence as fired so it won't notify again. */
@@ -248,28 +126,82 @@ export function markFired(key: string, now = new Date()): void {
   saveFired(fired);
 }
 
-/** Fire all currently-due notices; returns the ones sent (empty if not allowed). */
+export function serverPushActive(): boolean {
+  try {
+    return localStorage.getItem(SERVER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Process due reminders for the app-open case and return them (for the in-app
+ * toast). When this device is registered for server push, the cron delivers the
+ * OS notification, so we only mark-fired + toast here to avoid duplicates.
+ */
 export async function flushDue(state: AppState, now = new Date()): Promise<DueNotice[]> {
   if ((state.settings?.notify?.enabled ?? false) === false) return [];
   if (permission() !== "granted") return [];
   const due = collectDue(state, now);
-  const sent: DueNotice[] = [];
+  const useServer = serverPushActive();
+  const handled: DueNotice[] = [];
   for (const n of due) {
-    const ok = await showNotification(n.title, n.body, n.key);
-    if (ok) {
-      markFired(n.key, now);
-      sent.push(n);
+    if (!useServer) {
+      const ok = await showNotification(n.title, n.body, n.key);
+      if (!ok) continue;
     }
+    markFired(n.key, now); // local ledger dedupes the toast
+    handled.push(n);
   }
-  return sent;
+  return handled;
 }
 
-// --- Optional: real push via VAPID (needs a backend to send) -----------------
+// --- Real push via VAPID + server cron ---------------------------------------
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+/** Slice of state the server needs to evaluate the schedule. */
+function toSchedule(state: AppState): Schedule {
+  return {
+    subscriptions: state.subscriptions,
+    alerts: state.alerts ?? [],
+    habits: state.habits ?? [],
+    settings: { notify: state.settings.notify },
+  };
+}
+
+/**
+ * Register this device + its reminder schedule with the server so the cron can
+ * deliver reminders while the app is fully closed. Safe to call repeatedly
+ * (the server upserts by subscription). Sets a flag used to avoid double-firing.
+ */
+export async function registerForServerPush(state: AppState): Promise<boolean> {
+  const sub = await subscribeToPush();
+  if (!sub) return false;
+  try {
+    const res = await fetch("/api/push/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        subscription: sub,
+        schedule: toSchedule(state),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    });
+    const ok = res.ok && (await res.json().catch(() => ({})))?.stored === true;
+    try {
+      localStorage.setItem(SERVER_KEY, ok ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /**

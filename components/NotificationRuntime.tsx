@@ -8,7 +8,13 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
-import { registerServiceWorker, flushDue, notificationsSupported, permission } from "@/lib/notify";
+import {
+  registerServiceWorker,
+  flushDue,
+  notificationsSupported,
+  permission,
+  registerForServerPush,
+} from "@/lib/notify";
 import { Toast } from "./ui";
 
 export function NotificationRuntime() {
@@ -18,6 +24,14 @@ export function NotificationRuntime() {
   useEffect(() => {
     if (notificationsSupported()) void registerServiceWorker();
   }, []);
+
+  // Keep the server's copy of the schedule fresh (for closed-app push). Debounced
+  // so rapid edits collapse into one registration.
+  useEffect(() => {
+    if (!ready || permission() !== "granted") return;
+    const t = window.setTimeout(() => void registerForServerPush(state), 1500);
+    return () => window.clearTimeout(t);
+  }, [ready, state.habits, state.alerts, state.subscriptions, state.settings.notify]);
 
   useEffect(() => {
     if (!ready) return;
